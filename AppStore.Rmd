@@ -793,7 +793,7 @@ store %>%
 <!-- Rating and size -->
 
 - Mean size **199,13 MB**
-- Bigger apps are the free ones and the ones with higher rating
+- Bigger apps are the not rated ones and the ones with higher rating
 
 ```{r, include = T,warning = F, message = F, echo = F}
 store %>%
