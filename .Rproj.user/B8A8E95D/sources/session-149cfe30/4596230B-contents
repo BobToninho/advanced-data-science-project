@@ -1,0 +1,878 @@
+---
+title: "Apple App Store app analysis"
+# subtitle: "Analisi delle app dell'Apple App Store"
+author: "Roberto Tonino"
+# date: '18-01-2023'
+output: 
+  ioslides_presentation:
+    css: style.css
+    widescreen: true
+    smaller: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r include=FALSE}
+# library(devtools)
+library(ggplot2)
+library(ggthemes)
+library(modelr)
+library(magick)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(cowplot)
+
+# === Utils ===
+# https://rpubs.com/ashishgopal1414/Function_Mode
+getmode <- function(x){
+  uniqv <- unique(x)
+  uniqv[which.max(tabulate(match(x,uniqv)))] 
+}
+
+computeAverageRating <- function(tib) {
+  (tib %>%
+     pull(user_rating) %>%
+     mean() %>%
+     round(digits = 2)
+  )
+}
+# === End Utils ===
+
+
+NUMBER_OF_MOST_POPULAR_CATEGORIES = 5
+
+# devtools::install_github("ramamet/applestoreR")
+
+# The dataset has 11k records but ~4k are empty
+# saveRDS(as_tibble(applestoreR::AppleStore), file = "app-store.rds")
+# store <- na.omit(as_tibble(applestoreR::AppleStore))  %>%
+store <- na.omit(as_tibble(readRDS("app-store.rds")))  %>%
+  mutate(user_rating_factor = as.factor(user_rating))
+
+categories <- store %>%
+  group_by(prime_genre) %>%
+  summarise(count = n())
+
+# nrow(categories)
+
+categoriesWithMostApps = store %>%
+  group_by(prime_genre) %>%
+  summarise(number_of_apps = n())  %>%
+  mutate(percentage = (number_of_apps / sum(number_of_apps)) * 100) %>%
+  arrange(-number_of_apps)
+  
+# categoriesWithMostApps
+
+groupedByFreeOrPaid = store %>%
+  mutate(is_free = price == 0) %>%
+  group_by(is_free) %>%
+  summarise(count = n()) %>%
+  mutate(type = as.character(sum(count))) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+paidApps = store %>%
+  filter(price != 0) %>%
+  group_by(price) %>%
+  summarise(count = n()) %>%
+  arrange(-count)
+
+observationsCount <- store %>%
+  tally() %>%
+  pull()
+
+plotCategories <- function(tib, xLabel = "Category") {
+  (tib %>%
+     ggplot(aes(x = reorder(prime_genre, -percentage),
+                y = percentage,
+                fill=prime_genre)) +
+     geom_col() +
+     labs(x = xLabel, y = "%") +
+     theme_fivethirtyeight() +
+     theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title = element_text(), legend.position = "none")
+   )
+}
+
+sortedByPopularity = store %>%
+  select(id, rating_count_tot, user_rating, prime_genre, price) %>%
+  arrange(desc(rating_count_tot), desc(user_rating))
+
+lessThan1Dollar = store %>%
+  filter(price <= 1)
+lessThan5Dollars = store %>%
+  filter(price <= 5)
+lessThan10Dollars = store %>%
+  filter(price <= 10)
+
+# === Average ratings ===
+  
+top10AppsRating <- sortedByPopularity %>%
+  slice_head(n = 10) %>%
+  computeAverageRating()
+
+top100AppsRating <- sortedByPopularity %>%
+  slice_head(n = 100) %>%
+  computeAverageRating()
+
+top1000AppsRating <- sortedByPopularity %>%
+  slice_head(n = 1000) %>%
+  computeAverageRating()
+
+allAppsRating <- store %>%
+  computeAverageRating()
+
+ratings <-
+  tibble(
+    app_count = c(as.factor(10), as.factor(100), as.factor(1000), as.factor(nrow(store))),
+    mean_rating = c(
+      top10AppsRating,
+      top100AppsRating,
+      top1000AppsRating,
+      allAppsRating
+    )
+  )
+#ratings
+
+mostPopularCategories = categoriesWithMostApps %>%
+  slice_head(n = NUMBER_OF_MOST_POPULAR_CATEGORIES) %>%
+  pull(prime_genre)
+
+# mostPopularAppsOfMostPopularCategories = sortedByPopularity %>%
+#   slice_head(n = 100) %>%
+#   filter(prime_genre %in% mostPopularCategories) %>%
+#   group_by(prime_genre) %>%
+#   summarise(number_of_apps = n()) %>%
+#   mutate(percentage = (number_of_apps / sum(number_of_apps)) * 100)
+
+categoriesWithMostApps = store %>%
+  group_by(prime_genre) %>%
+  summarise(number_of_apps = n())  %>%
+  mutate(percentage = (number_of_apps / sum(number_of_apps)) * 100) %>%
+  arrange(-number_of_apps)
+
+allButGames = categoriesWithMostApps %>% 
+  filter(prime_genre == "Games")
+
+gamesAndOthers = allButGames %>%
+  add_row(prime_genre = "Others", percentage = 100 - allButGames$percentage[1])
+# gamesAndOthers %>% View
+
+mostPopularCategories = categoriesWithMostApps %>%
+  slice_head(n = NUMBER_OF_MOST_POPULAR_CATEGORIES) %>%
+  pull(prime_genre)
+
+mostPopularAppsOfMostPopularCategories = sortedByPopularity %>%
+  slice_head(n = 100) %>%
+  filter(prime_genre %in% mostPopularCategories) %>%
+  group_by(prime_genre) %>%
+  summarise(number_of_apps = n()) %>%
+  mutate(percentage = (number_of_apps / sum(number_of_apps)) * 100)
+
+# Arbitrary, added for data viz and after knowing the previous result
+mostPopularAppsOfMostPopularCategories = mostPopularAppsOfMostPopularCategories %>%
+  add_row(prime_genre = "Education", number_of_apps = 0, percentage = 0)
+
+categoriesWithMostApps = store %>%
+  group_by(prime_genre) %>%
+  summarise(number_of_apps = n())  %>%
+  mutate(percentage = (number_of_apps / sum(number_of_apps)) * 100) %>%
+  arrange(-number_of_apps)
+
+allButGames = categoriesWithMostApps %>% 
+  filter(prime_genre == "Games")
+
+# print(allButGames$percentage[1])
+
+gamesAndOthers = allButGames %>%
+  add_row(prime_genre = "Others", percentage = 100 - allButGames$percentage[1])
+# gamesAndOthers %>% View
+
+freeAndPaidCount = sortedByPopularity %>%
+  slice_head(n = 1000) %>%
+  mutate(is_free = price == 0) %>%
+  group_by(is_free) %>%
+  summarise(count = n())  %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+groupedByFreeOrPaidTop10 = sortedByPopularity %>%
+  slice_head(n = 10) %>%
+  mutate(is_free = price == 0) %>%
+  group_by(is_free) %>%
+  summarise(count = n()) %>%
+  mutate(type = "10") %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+groupedByFreeOrPaidTop100 = sortedByPopularity %>%
+  slice_head(n = 100) %>%
+  mutate(is_free = price == 0) %>%
+  group_by(is_free) %>%
+  summarise(count = n()) %>%
+  mutate(type = "100") %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+groupedByFreeOrPaidTop1000 = sortedByPopularity %>%
+  slice_head(n = 1000) %>%
+  mutate(is_free = price == 0) %>%
+  group_by(is_free) %>%
+  summarise(count = n()) %>%
+  mutate(type = "1000") %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+allGrouped = rbind(groupedByFreeOrPaid, groupedByFreeOrPaidTop10, groupedByFreeOrPaidTop100, groupedByFreeOrPaidTop1000)
+
+categoriesByFreeOrPaidApps = sortedByPopularity %>%
+  # slice_head(n = 1000) %>%
+  mutate(is_free = price == 0) %>%
+  group_by(prime_genre, is_free) %>%
+  summarise(count = n())  %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+# categoriesByFreeOrPaidApps %>%
+#   View
+
+# From https://stackoverflow.com/a/44595636/12453976
+# my_fun <- function(x) x[!is.na(x)]
+
+# spreadCategories = categoriesByFreeOrPaidApps %>%
+#   mutate(type = if_else(is_free, 'free', 'paid')) %>%
+#   pivot_wider(names_from = type, values_from =  count) %>%
+#   select(-is_free, -percentage) %>%
+#   # From https://stackoverflow.com/a/44595636/12453976
+#   summarise_all(funs(my_fun))
+
+categoriesPaidData = categoriesByFreeOrPaidApps %>%
+  filter(is_free == FALSE) %>%
+  arrange(-percentage) 
+
+categoriesPaidData %>%
+  ggplot() + geom_col(mapping = aes(
+    x = reorder(prime_genre, -percentage),
+    y = percentage,
+  ))
+  # View()
+
+categoriesFreeData = categoriesByFreeOrPaidApps %>%
+  filter(is_free == TRUE) %>%
+  arrange(-percentage) 
+
+categoriesFreeData %>%
+  ggplot() + geom_col(mapping = aes(
+    x = reorder(prime_genre, -percentage),
+    y = percentage,
+  ))
+  # View()
+
+categoriesByFreeOrPaidApps %>%
+  ggplot() + geom_col(mapping = aes(
+    x = reorder(prime_genre, percentage),
+    y = percentage,
+    group = is_free,
+    fill = is_free
+  ))
+
+# group the data by genre and compute the mean price
+dataByCategory <-
+  store %>%
+  group_by(prime_genre) %>%
+  summarize(mean_price = mean(price))
+
+storeForPrediction <- store %>%
+  select(id, size_bytes, price, prime_genre, user_rating, rating_count_tot, rating_count_ver, cont_rating) %>%
+  # select( size_bytes,
+  #        price,
+  #        prime_genre,
+  #        user_rating,
+  #        rating_count_tot) %>%
+  mutate(prime_genre = as.numeric(prime_genre)) %>%
+  mutate(cont_rating = as.numeric(cont_rating)) %>%
+  mutate(user_rating = ifelse(
+    is.na(user_rating),
+    mean(user_rating, na.rm = TRUE),
+    user_rating
+  ))
+
+# View(storeForPrediction)
+
+# mod1 <-
+#   lm(user_rating ~ size_bytes,
+#      data = storeForPrediction)
+# mod2 <-
+#   lm(user_rating ~ price,
+#      data = storeForPrediction)
+# mod3 <-
+#   lm(user_rating ~ rating_count_tot,
+#      data = storeForPrediction)
+mod4 <-
+  lm(
+    # user_rating ~ size_bytes + price + prime_genre + rating_count_tot + rating_count_ver + cont_rating,
+    user_rating ~ size_bytes + price + prime_genre + rating_count_tot,
+    data = storeForPrediction
+  )
+
+summary(mod4)$r.squared
+mod4$coefficients
+
+storeForPrediction %>%
+  ggplot(aes(y = user_rating, x = size_bytes)) +
+  geom_point() +
+  geom_abline(
+    intercept = mod4$coefficients[1],
+    slope = mod4$coefficients[2],
+    color = "red"
+  )
+# storeForPrediction %>%
+#   ggplot(aes(y = user_rating, x = price)) +
+#   geom_point() +
+#   geom_abline(
+#     intercept = mod2$coefficients[1],
+#     slope = mod2$coefficients[2],
+#     color = "red"
+#   )
+# storeForPrediction %>%
+#   ggplot(aes(y = user_rating, x = rating_count_tot)) +
+#   geom_point() +
+#   geom_abline(
+#     intercept = mod3$coefficients[1],
+#     slope = mod3$coefficients[2],
+#     color = "red"
+#   )
+# storeForPrediction %>%
+#   ggplot(aes(y = user_rating, x = size_bytes + price + rating_count_tot)) +
+#   geom_point() +
+#   geom_abline(
+#     intercept = mod4$coefficients[1],
+#     slope = mod4$coefficients[2],
+#     color = "red"
+#   )
+
+(r1 = cor(store$user_rating, store$size_bytes))
+(r2 = cor(store$user_rating, store$price))
+(r3 = cor(store$user_rating, store$rating_count_tot))
+
+storeForPrediction = storeForPrediction %>%
+  mutate(residuals = residuals(mod4)) %>%
+  # From https://stackoverflow.com/a/37044186/12453976
+  mutate(predicted_rating = ceiling(fitted(mod4) * 2) / 2)
+
+# View(storeForPrediction)
+```
+
+## App Store
+
+The Apple App Store is a digital store that allows its users to download apps for iPhone, iPad, Mac and all the other devices of Apple's ecosystem.
+
+```{r, echo=FALSE, fig.align="center"}
+pic2 = ggdraw() + draw_image("./img/app-store-2.jpg", scale = 1)
+pic2
+```
+
+## Dataset description
+
+-   Snapshot in a time instant
+-   7000+ apps
+-   Most significant features:
+    -   **user rating** (mean of the votes of the reviews)
+    -   **price**
+    -   **total number of reviews**
+    -   **category**
+    -   **size**
+    
+## Goal
+
+In this presentation we're going to explore the dataset and search for a correlation between the app's rating, price, number of reviews, and category. The next slides will show the findings on this topic.
+
+This is important for app developers as they can use this information to make changes to their app. An app developer could inspect the results of this project in order to find room for improvement.
+
+## Popularity
+
+-   The popularity of an **app** is measured by counting the total number of user ratings
+-   The popularity of a **category** is measured by counting the number of apps that fall into that category
+
+```{r, include = T,warning = F, message = F, echo = F}
+store %>%
+  arrange(desc(rating_count_tot), desc(user_rating)) %>%
+  slice_head(n = 10) %>%
+  ggplot(aes(x = reorder(track_name, desc(rating_count_tot)), y = rating_count_tot, fill = track_name)) +
+  geom_col() +
+  labs(x = "App Name", y = "Number of ratings", title = "Top 10 Apps by Popularity") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) 
+  # scale_fill_brewer(palette = "Set2", direction = -1)
+```
+
+
+##  Distributions of apps in categories
+
+- 24 app categories
+- `Games` category contains more than half of the apps (53.66%)
+- The 5 categories with most apps in them are `Games`, `Entertainment`, `Education`, `Photo & Video` and `Utilities`
+
+```{r, include = T,warning = F, message = F, echo = F}
+categoriesWithMostApps %>%
+  mutate(percentage = round(percentage, 2)) %>%
+  ggplot(aes(x = reorder(prime_genre, percentage), y = percentage, fill = prime_genre)) +
+  geom_col() +
+  coord_flip() +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), legend.position = "none") +
+  labs(x = "Category", y = "Percentage") +
+  geom_text(label = ifelse(categoriesWithMostApps$percentage > 1, round(categoriesWithMostApps$percentage, 2), ""), size = 3, nudge_y = 2, nudge_x =0)
+```
+
+## Top 100 apps categories
+
+<!-- -   68 of the top 100 most popular apps are in one of the 5 categories with most apps -->
+- The 5 categories with most apps contain 68 of the top 100 most popular apps
+<!-- -   60% of the apps in the top 100 most popular apps are of the "Games" category -->
+- The `Games` category contains 60 of the top 100 most popular apps
+-   The `Education` category, despite being one of the 5 categories with most apps in it, does not have any app in the top 100 most popular apps
+
+```{r, include = T,warning = F, message = F, echo = F}
+mostPopularAppsOfMostPopularCategories %>% 
+  ggplot(aes(x = reorder(prime_genre, desc(number_of_apps)), y = number_of_apps, fill = prime_genre)) +
+  geom_col() + 
+  geom_text(label = mostPopularAppsOfMostPopularCategories$number_of_apps, nudge_y = 3) +
+  coord_cartesian(ylim = c(0, 100)) + 
+  labs(x = "Category", y = "Count") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Set2", direction = -1)
+```
+
+## Categories and prices
+
+<!-- - The `Book`, `Food & Drink`, `Social Networking`, `Lifestyle`, `Shopping`, `Travel`, `Sports`, `Finance`, `Catalogs` categories contain only free apps -->
+<!-- - All the categories have more free than paid apps -->
+- The `Shopping` category contains mostly free apps (99.18%)
+
+```{r, include = T,warning = F, message = F, echo = F}
+categoriesByFreeOrPaidApps %>%
+  ggplot(aes(
+    x = reorder(prime_genre, percentage),
+    y = percentage / 100,
+    group = is_free,
+    fill = is_free
+  )) + 
+  geom_col()+
+  # geom_text(label = round(categoriesByFreeOrPaidApps$percentage, 2), nudge_y = 0, nudge_x = 0, size  =2) +
+  labs(x = "Category", y = "Share", fill = "Is free?") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_text(),
+    legend.position = "right",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Set2", direction = -1)
+```
+
+## Categories and prices
+
+- The `Medical` category is by far the category with the highest mean price
+- The `Shopping` category not only contains mostly free apps, but also the paid ones' mean is low (0.02$)
+
+```{r, include = T,warning = F, message = F, echo = F}
+dataByCategory %>%
+  ggplot(aes(
+    x = reorder(prime_genre, -mean_price),
+    y = mean_price,
+    fill = prime_genre
+  )) +
+  geom_col() +
+  geom_text(label = round(dataByCategory$mean_price, 2), nudge_y = .5, nudge_x = 0, size  =2) +
+  xlab("Category") +
+  ylab("Mean price [$]") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_text(),
+    legend.position = "none"
+  )
+```
+
+##  Distribution of free and paid apps
+
+- Slightly more free apps: **56,36%**
+- Balanced amount of free and paid
+- Not balanced if we look at the prices: more than half of the apps have a price of 0$
+
+```{r, include = T,warning = F, message = F, echo = F}
+groupedByFreeOrPaid %>%
+  mutate(is_free = ifelse(is_free, "Yes", "No")) %>%
+  mutate(percentage = round(percentage, 2)) %>%
+  ggplot(aes(x = is_free, y = percentage, fill = is_free)) +
+  geom_col() +
+  geom_text(aes(label = percentage),
+            size = 3,
+            position = position_stack(vjust = 0.5)) +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), legend.position = "none") +
+  labs(x = "Is Free?", y = "Percentage") +
+  scale_fill_brewer(palette = "Set2", direction = -1)
+
+```
+
+## Free and paid apps
+
+The 56.4% of the apps are free, but things change when the we observe the top 10, 100 and 1000 most popular apps
+
+```{r, include = T,warning = F, message = F, echo = F}
+# freeAndPaidCount %>%
+#   ggplot() +
+#   geom_col(mapping = aes(x = is_free, y = percentage))
+allGrouped %>%
+  mutate(is_free = ifelse(is_free, "Yes", "No")) %>%
+  # mutate(percentage = round(percentage, 2)) %>%
+  ggplot(aes(y = percentage,
+               x = type,
+               fill = is_free),
+           ) +
+  geom_bar(stat = "identity",
+           position = position_dodge(preserve = "single"))  +
+  geom_text(label = round(allGrouped$percentage, 2), nudge_y = 3, nudge_x = 0) +
+  # scale_fill_discrete(name =
+                        # "Is free?", labels = c('No', 'Yes')) +
+  labs(x = "Top Apps by Popularity", y = "Percentage", fill = "Is free?") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "right",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Set2", direction = -1)
+```
+
+##  Price trend
+
+- Price
+  - Mean: 1.73$
+  - Median: 0$
+  - Mode: 0$
+<!-- - In the 43.64% of paid apps, the prices are very low -->
+- 4.784 apps (66,47%) cost 1$ or less
+- 6.759 apps (93,91%) cost 5$ or less
+- 7.100 apps (98,65%) cost 10$ or less
+
+```{r, include = T,warning = F, message = F, echo = F}
+# print(summary(store$price))
+# print(getmode(store$price))
+  
+# print(nrow(lessThan1Dollar) / nrow(store) * 100)
+# print(nrow(lessThan5Dollars) / nrow(store) * 100)
+# print(nrow(lessThan10Dollars) / nrow(store) * 100)
+
+paidApps %>%
+  # filter(count >= 5) %>%
+  ggplot(aes(x = as.numeric(price), y = count)) +
+  # These colors are inverted for some reason
+  geom_line(aes(color = "orange")) +
+  geom_point(aes(color = "blue")) +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), legend.position = "none") +
+  labs(x = "Price", y = "Count") +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+
+## Popular apps' rating
+
+-   Hypothesis: the more popular an app is, the higher the user rating
+-   Top 10, 100 and 1000 most popular apps
+-   The data confirms the hypothesis
+
+```{r, include = T,warning = F, message = F, echo = F}
+ratings %>%
+  ggplot(aes(x = app_count, y = mean_rating, fill = app_count)) +
+  # geom_path(color = "blue")  + 
+  geom_col() + 
+  coord_cartesian(ylim = c(0, 5)) +
+  labs(x = "Top Apps by Popularity", y = "Mean Rating") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Set2", direction = -1)
+```
+
+
+
+<!-- ## Categories and prices -->
+
+<!-- The categories with the most paid apps are -->
+
+```{r, include = T,warning = F, message = F, echo = F}
+categoriesPaidData %>%
+  plotCategories("Paid Apps Categories")
+```
+
+<!-- ## Categories and prices -->
+
+<!-- The categories with the most free apps are -->
+
+```{r, include = F,warning = F, message = F, echo = F}
+categoriesFreeData %>%
+  plotCategories("Free Apps Categories")
+```
+
+##  Distribution of the user rating
+
+- Rating
+  - Mean: 3.53
+  - Median: 4
+  - Mode: 4.5
+- General tendency to a high rating
+
+
+```{r, include = F}
+print(mean(store$user_rating))
+print(summary(store$user_rating))
+print(getmode(store$user_rating))
+```
+
+```{r, include = T,warning = F, message = F, echo = F}
+store %>%
+  group_by(user_rating_factor) %>%
+  tally(name = "count") %>%
+  ggplot(aes(x = user_rating_factor, y = count, fill = user_rating_factor)) + 
+  # geom_text(label = ifelse(count >= 1000, count, "")) +
+  geom_col() +
+  geom_text(aes(label = count),
+            size = 3,
+            position = position_stack(vjust = 0.5)) +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), legend.position = "none") +
+  labs(x = "User Rating", y = "Count") +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+
+##  User rating vs category
+
+<!-- Categories and rating -->
+
+- The warmer the color, the higher the rating
+- Half of the apps in `Catalogs` have 0 rating
+- `Health and Fitness` is the best rated category
+
+```{r, include = F,warning = F, message = F, echo = F}
+store %>%
+  group_by(prime_genre) %>%
+  summarise(mean_rating = mean(user_rating)) %>%
+  # arrange(-mean_rating) %>%
+  # View
+  ggplot(aes(x = reorder(prime_genre, desc(mean_rating)), y = mean_rating)) +
+  geom_bar(stat="identity")
+
+store %>%
+  group_by(prime_genre) %>%
+  ggplot(aes(x = prime_genre, y = user_rating)) +
+  geom_boxplot()
+
+# table(store$prime_genre, store$user_rating)
+
+# library(vcd)
+# mosaicplot(table(store$prime_genre, store$user_rating), color = TRUE)
+# store %>%
+#   ggplot() +
+#   geom_mosaic(mapping = aes(x = product(prime_genre, user_rating), fill = user_rating))
+```
+
+```{r, include = T,warning = F, message = F, echo = F}
+store %>%
+  ggplot(aes(
+    x = reorder(prime_genre, user_rating),
+    fill = as.factor(user_rating),
+    group = as.factor(user_rating)
+  )) +
+  geom_bar(position = "fill") +
+  labs(x = "Category", y = "Percentage", fill = "User rating")+
+  theme_fivethirtyeight() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_text(),
+    legend.position = "right",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+##  User rating vs price
+
+<!-- Rating and price -->
+
+- Price goes towards 0 for each user rating
+
+```{r, include = T,warning = F, message = F, echo = F}
+store %>%
+  filter(price <= 100) %>%
+  # group_by(user_rating_factor) %>%
+  # summarise(mean_price = mean(price)) %>%
+  ggplot(aes(x = user_rating_factor, y = price, fill = user_rating_factor)) +
+  geom_boxplot() +
+  # geom_col() +
+  labs(x = "User Rating", y = "Price [$]") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+##  User rating vs price
+
+<!-- Rating and price -->
+
+<!-- - Standard deviation: 0,40 -->
+- Mean price is higher for apps with high rating
+
+```{r, include = T,warning = F, message = F, echo = F}
+# meanPrices = store %>%
+#   group_by(user_rating_factor) %>%
+#   summarise(mean_price = mean(price))
+# 
+# meanPrices
+# sd(meanPrices$mean_price)
+
+store %>%
+  group_by(user_rating_factor) %>%
+  summarise(mean_price = mean(price)) %>%
+  ggplot(aes(x = user_rating_factor, y = mean_price, fill = user_rating_factor, group = 1)) +
+  geom_col() +
+  geom_line(linewidth= 1.1) +
+  geom_text(aes(label = round(mean_price, 2)),
+            size = 3,
+            position = position_stack(vjust = 0.5)) +
+  labs(x = "User Rating", y = "Mean Price [$]") +
+  coord_cartesian(ylim = c(0, 10)) +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+##  User rating vs size
+
+<!-- Rating and size -->
+
+- Mean size **199,13 MB**
+- Bigger apps are the free ones and the ones with higher rating
+
+```{r, include = T,warning = F, message = F, echo = F}
+# mean(store$size_bytes) / 1e6
+store %>%
+  ggplot(aes(x = user_rating_factor, y = size_bytes / 1e6, fill = user_rating_factor)) +
+  geom_boxplot() +
+  labs(x = "User Rating", y = "Size [MB]") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+##  User rating vs size
+
+<!-- Rating and size -->
+
+- Mean size **199,13 MB**
+- Bigger apps are the free ones and the ones with higher rating
+
+```{r, include = T,warning = F, message = F, echo = F}
+store %>%
+  group_by(user_rating_factor) %>%
+  summarise(mean_size = mean(size_bytes) / 1e6) %>%
+  ggplot(aes(x = user_rating_factor, y = mean_size, fill = user_rating_factor)) +
+  geom_col() +
+  geom_text(aes(label = round(mean_size, 0)),
+            size = 3,
+            position = position_stack(vjust = 0.5)) +
+  labs(x = "User Rating", y = "Mean Size [MB]") +
+  theme_fivethirtyeight() +
+  theme(
+    axis.title = element_text(),
+    legend.position = "none",
+    legend.direction = "vertical"
+  ) +
+  scale_fill_brewer(palette = "Spectral", direction = -1)
+```
+
+## Rating correlation
+
+-   Linear regression model is used
+- Searching correlation with `size_bytes`, `price`, `prime_genre`, `rating_count_tot`
+
+```{r, include = FALSE}
+cor(storeForPrediction$user_rating,
+    storeForPrediction$price,
+    method = "pearson") %>%
+  print
+
+cor(storeForPrediction$user_rating,
+    storeForPrediction$size_bytes,
+    method = "pearson") %>%
+  print
+
+cor(storeForPrediction$user_rating,
+    storeForPrediction$rating_count_tot,
+    method = "pearson") %>%
+  print
+```
+
+```{r, include = T,warning = F, message = F, echo = F}
+# Create the residual plot
+storeForPrediction %>%
+  ggplot(aes(x = predicted_rating, y = residuals)) +
+  geom_hline(
+    yintercept = 0,
+    color = "gray",
+    linewidth = 1.1,
+    alpha = .7
+  ) +
+  geom_point(aes(color = cut(predicted_rating, c(-Inf, 0, 5, Inf)))) +
+  scale_color_manual(values = c("(0,5]" = "green", "(5, Inf]" = "red")) +
+  xlab("Predicted Values") +
+  ylab("Residuals") +
+  coord_cartesian(xlim = c(0, 10)) +
+  theme_fivethirtyeight() +
+  theme(axis.title = element_text(), legend.position = "none") 
+  # scale_x_continuous("predicted_rating", labels = as.character(rep(0:5, )), breaks = storeForPrediction$predicted_rating)
+```
+
+<!-- ## Comparing free/paid with apps ordered by rating and number of ratings? -->
+<!-- ## Comparing categories and mean prices for ALL apps and for apps with 4, 4.5 and 5 user_rating -->
+
+## Conclusions
+
+- Is target variable `user_rating` correlated with `size_bytes` , `price` , `prime_genre` , `rating_count_tot`?
+  - R-squared value (0.02) suggests that there is no correlation between them
+- Even if in the preliminary observation a correlation can be found, the analytical process suggests the opposite
+  
+### Future possibilities
+  
+- Measure the popularity feature adding the number of downloads, which this dataset misses
+- Search for a correlation between the rating and the number of downloads (still, assuming this data is available)
+
+## 
+
+<div style="display:flex; align-items: center; width:100%; height: 300px">
+<span style="font-size: 40px">Thank you for your attention!</span>
+</div>
+

@@ -1,0 +1,29 @@
+{
+    "id": "4596230B",
+    "path": "C:/Users/Roberto/Dev/uniud/advanced-data-science/advanced-data-science-project/AppStore.Rmd",
+    "project_path": "AppStore.Rmd",
+    "type": "r_markdown",
+    "hash": "166182642",
+    "contents": "",
+    "dirty": false,
+    "created": 1673826742005.0,
+    "source_on_save": true,
+    "relative_order": 1,
+    "properties": {
+        "chunk_output_type": "inline",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "819,65",
+        "scrollLine": "803",
+        "last_setup_crc32": "149cfe30a56ed1fc",
+        "marks": "<:819,65\n>:819,65"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1673851851,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1673851851416,
+    "read_only": false,
+    "read_only_alternatives": []
+}
