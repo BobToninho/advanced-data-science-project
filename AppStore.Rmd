@@ -478,7 +478,7 @@ categoriesByFreeOrPaidApps %>%
 ## Categories and prices
 
 - The `Medical` category is by far the category with the highest mean price
-- The `Shopping` category not only contains mostly free apps, but also the paid ones' mean is low (0.02$)
+- The `Shopping` category, by containing mostly free apps, of course has a low mean (0.02$)
 
 ```{r, include = T,warning = F, message = F, echo = F}
 dataByCategory %>%
@@ -611,7 +611,7 @@ ratings %>%
 
 <!-- The categories with the most paid apps are -->
 
-```{r, include = T,warning = F, message = F, echo = F}
+```{r, include = F,warning = F, message = F, echo = F}
 categoriesPaidData %>%
   plotCategories("Paid Apps Categories")
 ```
@@ -771,7 +771,7 @@ store %>%
 <!-- Rating and size -->
 
 - Mean size **199,13 MB**
-- Bigger apps are the free ones and the ones with higher rating
+- Bigger apps are the not rated ones and the ones with higher rating
 
 ```{r, include = T,warning = F, message = F, echo = F}
 # mean(store$size_bytes) / 1e6
